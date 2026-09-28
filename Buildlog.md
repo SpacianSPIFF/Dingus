@@ -1,10 +1,30 @@
 # Build Log
 
+## 2026-09-28
+
+**Focus:** Writing code for the controller.
+
+**Summary:**
+- Finished wiring the controller, though many times a loose conneciton makes the ESP reset by itself, for I believe something is pulling a bus low. Now for that I need to now figure out how to fix a perfboard in the _severly_ limited volume of the controller, as i designed it without a perfboard in mind... Maybe I can reprint it without the standoffs?
+- Wrote significant portion of the code for the controller
+- Tested th ecode currently wrote... Builds and displays on the OLED also
+- Next up is the ESP-NOW and the turret code left
+- I have been putting off the modelling for way too long for the turret. hae to finish that ASAP
+
+## 2026-09-23
+
+**Focus:** Finishing the controller.
+
+**Summary:**
+- Finished the CAD model and printing of the controller
+- The base had many issues, fixed them one by one, primarily being the dimensions
+- Started wiring the electronics on the controller
+
 ## 2026-09-19
 
 **Focus:** Move modelling to Solidworks, and finish off the controller. Also initialising the code base.
 
-**Time:** Majorly the previous week.
+**Timeline:** Majorly the previous week.
 
 **Summary:**
 - Well, I restarted modelling everything from scratch in Solidworks, as RMI prmiarily works on it, and not Fusion.
