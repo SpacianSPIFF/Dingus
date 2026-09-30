@@ -27,12 +27,12 @@ void orientation_update(orientation_t *orient, float gyro_x, float gyro_y, float
     // Accelerometer-derived roll/pitch — valid only when accel is close to 1g
     // (i.e. mostly gravity, not much linear acceleration). atan2 avoids
     // divide-by-zero and gives the correct quadrant.
-    float accel_roll  = atan2f(accel_y, accel_z) * 180.0f / (float)M_PI;
-    float accel_pitch = atan2f(-accel_x, sqrtf(accel_y * accel_y + accel_z * accel_z)) * 180.0f / (float)M_PI;
+    float accel_roll  = atan2f(accel_x, accel_z) * 180.0f / (float)M_PI;
+    float accel_pitch = atan2f(-accel_y, sqrtf(accel_x * accel_x + accel_z * accel_z)) * 180.0f / (float)M_PI;
 
     // Gyro-integrated angle for this step
-    float gyro_roll  = orient->roll_deg  + gyro_x * dt;
-    float gyro_pitch = orient->pitch_deg + gyro_y * dt;
+    float gyro_roll  = orient->roll_deg  + gyro_y * dt;
+    float gyro_pitch = orient->pitch_deg + gyro_x * dt;
 
     // Blend: mostly gyro, corrected toward accel
     orient->roll_deg  = ALPHA * gyro_roll  + (1.0f - ALPHA) * accel_roll;

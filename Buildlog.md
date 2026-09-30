@@ -1,8 +1,26 @@
 # Build Log
 
+## 2026-09-30
+
+**Focus:** Maximise progress
+
+**Summary:**
+- The Mode change and Yaw calibrate button doesn't work, not sure why. Yaw calibrate basically being that the yaw shoots off randomly overtime, which it shouldn't, and so to fix that if one holds the button, it resets yaw to 0
+- Fixed code bug where the Roll and Pitch is swapped
+
+## 2026-09-29
+
+**Focus:** Finishing of the code and model
+
+**Summary:**
+- Finally got the controller packaged, and flashed. Looks like the ["Finishing the controller"](#2026-09-23) never actually finished... But fine, got it done now
+- Well, I finished _almost_ the entire code today... (yes, I used AI, but it's fine for now)
+- Put parts to print, but turns out many flaws in modelling, like the dimensions, and the further mount planning, so gotta redo
+- Started soldering the perfboard for the turret
+
 ## 2026-09-28
 
-**Focus:** Writing code for the controller.
+**Focus:** Writing code for the controller
 
 **Summary:**
 - Finished wiring the controller, though many times a loose conneciton makes the ESP reset by itself, for I believe something is pulling a bus low. Now for that I need to now figure out how to fix a perfboard in the _severly_ limited volume of the controller, as i designed it without a perfboard in mind... Maybe I can reprint it without the standoffs?
@@ -13,7 +31,7 @@
 
 ## 2026-09-23
 
-**Focus:** Finishing the controller.
+**Focus:** Finishing the controller
 
 **Summary:**
 - Finished the CAD model and printing of the controller
@@ -22,9 +40,9 @@
 
 ## 2026-09-19
 
-**Focus:** Move modelling to Solidworks, and finish off the controller. Also initialising the code base.
+**Focus:** Move modelling to Solidworks, and finish off the controller. Also initialising the code base
 
-**Timeline:** Majorly the previous week.
+**Timeline:** Majorly the previous week
 
 **Summary:**
 - Well, I restarted modelling everything from scratch in Solidworks, as RMI prmiarily works on it, and not Fusion.
@@ -38,7 +56,7 @@
 
 ## 2026-08-23
 
-**Focus:** Continued modelling, and started electronic design.
+**Focus:** Continued modelling, and started electronic design
 
 **Summary:**
 - Made the circuit block diagrams
@@ -46,7 +64,7 @@
 
 ## 2026-08-22
 
-**Focus:** Finalised on the firing mechanism, and started modelling.
+**Focus:** Finalised on the firing mechanism, and started modelling
 
 **Summary:**
 - Made CAD models for:
@@ -57,7 +75,7 @@
 
 ## 2026-08-21
 
-**Focus:** Ideation for firing mechanism for the turret.
+**Focus:** Ideation for firing mechanism for the turret
 
 **Summary:**
 - Was able to come up with 3 methods of firing:
@@ -67,7 +85,7 @@
 
 ## 2026-08-14
 
-**Focus:** Thought of the entire design of the turret.
+**Focus:** Thought of the entire design of the turret
 
 **Summary:**
 - Initialised GitHub repo
