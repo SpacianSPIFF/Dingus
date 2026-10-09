@@ -1,5 +1,33 @@
 # Build Log
 
+## 2026-10-09
+
+**Focus:** Model fixes, printing top, and fixing code and electronics
+
+**Summary:**
+- Realised that the weight of the model of only firing was too much for the one MG946R to carry, so remodelled the entire support module for the MG946R so it stays put
+- Making major changes to code, trying to get more responsiveness, more information on the OLED, etc.
+- Also, finally added the CAD models to the repo... should've done in stages so changes can be a progression... but fine :(
+
+## 2026-10-08
+
+**Focus:** Assembling the firing mechanism
+
+**Summary:**
+- Got the firing mechanism printed
+- Assembled it after a bit of a struggle
+- Tested servos which weren't working initially, so it seems not to use the corner GND pin of the ESP32? It works if I use the GND pin in between
+- Tested BLDC, and only have 1 working ESC, so got to figure something out for it
+
+## 2026-10-07
+
+**Focus:** Finishing the CAD
+
+**Summary:**
+- Stayed up till 7 AM, and got the CAD completely finished
+- Switched to a 2 BLDC approach as seemed easier to model and execute as compared to a single BLDC with gear spinning flywheels in opposite directions
+- As I couldnt model a rack and pinion, I used a Scotch-Yoke mechanism to push the dart. Lets hope it works
+
 ## 2026-09-30
 
 **Focus:** Maximise progress

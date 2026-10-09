@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include "esp_err.h"
 #include "packet.h"
 
@@ -6,3 +7,4 @@
 
 esp_err_t espnow_send_init(void);
 esp_err_t espnow_send_cmd(const turret_cmd_t *cmd);
+bool espnow_send_is_connected(void);

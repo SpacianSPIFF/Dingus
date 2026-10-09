@@ -30,35 +30,50 @@ static void cal_progress_cb(int percent)
 // edge-triggered button_mode_pressed(). We track how long GPIO stays low
 // ourselves here, separate from the debounced edge logic, since we need
 // duration rather than just a press event.
-#define LONG_PRESS_MS 1000
+#define BUTTON_DEBOUNCE_US 30000   // 30 ms debounce
+#define LONG_PRESS_US      800000   // 800 ms hold to re-zero yaw
 
-static bool mode_btn_was_down = false;
-static int64_t mode_btn_down_since_us = 0;
-static bool mode_long_press_fired = false;
+static bool btn_stable_state = false;        // true = pressed (low)
+static bool btn_last_raw = false;
+static int64_t btn_last_transition_us = 0;
+static int64_t btn_press_start_us = 0;
+static bool long_press_handled = false;
 
 typedef enum { MODE_ACTION_NONE, MODE_ACTION_TOGGLE, MODE_ACTION_ZERO_YAW } mode_action_t;
 
 static mode_action_t poll_mode_button_action(void)
 {
-    bool level_low = gpio_get_level(BUTTON_MODE_GPIO) == 0;  // pressed = low
+    bool raw_pressed = (gpio_get_level(BUTTON_MODE_GPIO) == 0);
     int64_t now_us = esp_timer_get_time();
 
-    if (level_low && !mode_btn_was_down) {
-        mode_btn_was_down = true;
-        mode_btn_down_since_us = now_us;
-        mode_long_press_fired = false;
-    } else if (level_low && mode_btn_was_down) {
-        if (!mode_long_press_fired &&
-            (now_us - mode_btn_down_since_us) >= LONG_PRESS_MS * 1000) {
-            mode_long_press_fired = true;
-            return MODE_ACTION_ZERO_YAW;
+    // Track state change timestamp for debouncing
+    if (raw_pressed != btn_last_raw) {
+        btn_last_transition_us = now_us;
+        btn_last_raw = raw_pressed;
+    }
+
+    // Only update stable state once input has stayed constant longer than debounce threshold
+    if ((now_us - btn_last_transition_us) > BUTTON_DEBOUNCE_US) {
+        if (raw_pressed != btn_stable_state) {
+            btn_stable_state = raw_pressed;
+            if (btn_stable_state) {
+                // Button pressed down
+                btn_press_start_us = now_us;
+                long_press_handled = false;
+            } else {
+                // Button released
+                if (!long_press_handled) {
+                    return MODE_ACTION_TOGGLE;
+                }
+            }
         }
-    } else if (!level_low && mode_btn_was_down) {
-        mode_btn_was_down = false;
-        bool was_long = mode_long_press_fired;
-        mode_long_press_fired = false;
-        if (!was_long) {
-            return MODE_ACTION_TOGGLE;
+    }
+
+    // Check for continuous hold while button remains depressed
+    if (btn_stable_state && !long_press_handled) {
+        if ((now_us - btn_press_start_us) >= LONG_PRESS_US) {
+            long_press_handled = true;
+            return MODE_ACTION_ZERO_YAW;
         }
     }
 
@@ -85,6 +100,9 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(500));
 
     int64_t fire_display_until_us = 0;
+    int64_t yaw_zeroed_display_until_us = 0;
+    int64_t reconnected_display_until_us = 0;
+    bool link_was_ok = false;
     #define FIRE_DISPLAY_HOLD_MS 500
 
     orientation_t orient;
@@ -95,18 +113,21 @@ void app_main(void)
     uint32_t seq = 0;
 
     while (1) {
+        int64_t now_us = esp_timer_get_time();
+
         mode_action_t action = poll_mode_button_action();
         if (action == MODE_ACTION_TOGGLE) {
             mode = (mode == MODE_ORIENT) ? MODE_MANUAL : MODE_ORIENT;
         } else if (action == MODE_ACTION_ZERO_YAW) {
             orientation_zero_yaw(&orient);
+            yaw_zeroed_display_until_us = now_us + 1000000;  // Display "YAW ZEROED" for 1 sec
         }
 
         bool fired = button_fire_pressed();
         if (fired) {
-            fire_display_until_us = esp_timer_get_time() + (FIRE_DISPLAY_HOLD_MS * 1000);
+            fire_display_until_us = now_us + (FIRE_DISPLAY_HOLD_MS * 1000);
         }
-        bool show_fire_text = esp_timer_get_time() < fire_display_until_us;
+        bool show_fire_text = now_us < fire_display_until_us;
 
         mpu6050_read(&imu);
         float gx = imu.gyro_x - bias.gyro_x;
@@ -114,23 +135,51 @@ void app_main(void)
         float gz = imu.gyro_z - bias.gyro_z;
         orientation_update(&orient, gx, gy, gz, imu.accel_x, imu.accel_y, imu.accel_z);
 
-        // Workspace clamping (±90 yaw, 0-60 pitch), deadband, and slew-rate limiting
-        // are NOT applied yet — will be added once raw transmission is confirmed.
+        // MODE_ORIENT: uses Gyro Z integration (aim by rotating remote left/right)
+        // MODE_MANUAL: uses Roll tilt (aim by tilting remote left/right, 100% drift-free)
+        float commanded_yaw = (mode == MODE_ORIENT) ? orient.yaw_deg : orient.roll_deg;
+
         turret_cmd_t cmd = {
             .seq = seq++,
-            .yaw_deg = orient.yaw_deg,
+            .yaw_deg = commanded_yaw,
             .pitch_deg = orient.pitch_deg,
             .trigger = fired ? 1 : 0,
         };
         espnow_send_cmd(&cmd);
 
+        // Check wireless link ACK status
+        bool link_ok = espnow_send_is_connected();
+        if (link_ok && !link_was_ok) {
+            reconnected_display_until_us = now_us + 1500000;  // show for 1.5s
+        }
+        link_was_ok = link_ok;
+
         oled_clear();
-        oled_draw_text(0, 0, mode == MODE_ORIENT ? "MODE ORIENT" : "MODE MANUAL");
+        // Row 0: Mode description
+        oled_draw_text(0, 0, mode == MODE_ORIENT ? "MODE: YAW (TURN)" : "MODE: TILT(ROLL)");
+
+        // Row 1: Orientation angles
         char line[24];
-        snprintf(line, sizeof(line), "R%d P%d Y%d",
-                 (int)orient.roll_deg, (int)orient.pitch_deg, (int)orient.yaw_deg);
+        snprintf(line, sizeof(line), "R%3d P%3d Y%3d",
+                 (int)orient.roll_deg, (int)orient.pitch_deg, (int)commanded_yaw);
         oled_draw_text(0, 1, line);
-        oled_draw_text(0, 2, show_fire_text ? "*** FIRE ***" : "");
+
+        // Row 2: Fire flash or Yaw Zero notification
+        if (show_fire_text) {
+            oled_draw_text(0, 2, "*** FIRE ***");
+        } else if (now_us < yaw_zeroed_display_until_us) {
+            oled_draw_text(0, 2, "YAW ZEROED!");
+        }
+
+        // Row 3: Link connection status
+        if (!link_ok) {
+            oled_draw_text(0, 3, "LINK: LOST!");
+        } else if (now_us < reconnected_display_until_us) {
+            oled_draw_text(0, 3, "LINK: REGAINED");
+        } else {
+            oled_draw_text(0, 3, "LINK: OK");
+        }
+
         oled_flush();
 
         vTaskDelay(pdMS_TO_TICKS(20));
