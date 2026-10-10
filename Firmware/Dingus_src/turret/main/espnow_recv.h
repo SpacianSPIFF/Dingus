@@ -13,3 +13,6 @@ bool espnow_recv_link_alive(void);
 
 // True exactly once per received trigger packet, even if newer packets arrived since.
 bool espnow_recv_take_trigger(void);
+
+// Sends telemetry back to the controller. Returns ESP_OK or ESP_ERR_INVALID_STATE if controller peer unknown yet.
+esp_err_t espnow_send_telemetry(const turret_telemetry_t *telem);

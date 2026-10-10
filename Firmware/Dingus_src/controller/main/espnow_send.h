@@ -8,3 +8,4 @@
 esp_err_t espnow_send_init(void);
 esp_err_t espnow_send_cmd(const turret_cmd_t *cmd);
 bool espnow_send_is_connected(void);
+bool espnow_get_telemetry(turret_telemetry_t *out);

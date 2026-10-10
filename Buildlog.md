@@ -1,5 +1,20 @@
 # Build Log
 
+## 2026-10-10
+
+**Focus:** Bidirectional telemetry, tri-mode control, servo PWM calibration, and OLED HUD refactor
+
+**Summary:**
+- Added bidirectional ESP-NOW telemetry: turret captures controller MAC dynamically on command receipt and transmits achieved yaw/pitch angles back at 50 Hz.
+- Added live launcher state machine telemetry to ESP-NOW packets (`LAUNCHER_STATE_IDLE`, `SPOOLING`, `FIRING`, `READY`) with live countdown seconds remaining on flywheel hold.
+- Controller OLED Row 3 dynamically displays spooling animation (`SPOOLING ...`), launch event (`*** FIRING! ***`), and armed rapid-fire readiness with live countdown (`HOT: READY (5s)` ... `(1s)`).
+- Replaced text link status with custom 15×8 graphical Wi-Fi status symbol in bottom-right corner of OLED (live radiating waves, slashed Wi-Fi with [X] badge on disconnect, and [✓] badge on reconnect).
+- Moved action alerts (`*** FIRE ***`, `YAW ZEROED!`) to Row 3 so achieved turret angles on Row 2 remain permanently visible.
+- Restructured aiming modes into 3 states cycled via single tap on Mode button; holding $\ge 800\text{ ms}$ zeros yaw.
+- Re-calibrated servo drivers to support independent range and pulse bounds: RDS5160 (270°, 500–2500 µs), MG946R (180°, 500–2500 µs), and SimonK ESCs (1000–2000 µs).
+- Tuned complementary filter responsiveness ($\alpha = 0.92$) and added $0.4^\circ/\text{s}$ stationary gyro deadband to suppress drift.
+- Fixed ESP-IDF compile warnings treated as errors (`-Werror=maybe-uninitialized`).
+
 ## 2026-10-09
 
 **Focus:** Model fixes, printing top, and fixing code and electronics

@@ -137,3 +137,26 @@ void launcher_update(void)
         ESP_LOGI(TAG, "idle timeout: spinning flywheels down");
     }
 }
+
+launcher_state_t launcher_get_state(uint8_t *out_countdown_sec)
+{
+    if (out_countdown_sec) *out_countdown_sec = 0;
+
+    if (pstate != P_RETRACTED) {
+        return LAUNCHER_STATE_FIRING;
+    }
+    if (shot_pending) {
+        return LAUNCHER_STATE_SPOOLING;
+    }
+    if (flywheel_target_pct > 0.0f) {
+        int64_t now = esp_timer_get_time();
+        int64_t elapsed_us = now - last_activity_us;
+        int64_t remaining_us = ((int64_t)FLYWHEEL_HOLD_MS * 1000) - elapsed_us;
+        if (remaining_us > 0) {
+            uint8_t sec = (uint8_t)((remaining_us + 999999) / 1000000);
+            if (out_countdown_sec) *out_countdown_sec = sec;
+            return LAUNCHER_STATE_READY;
+        }
+    }
+    return LAUNCHER_STATE_IDLE;
+}

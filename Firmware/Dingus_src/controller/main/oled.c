@@ -160,6 +160,45 @@ void oled_draw_text(int x, int y, const char *text)
     }
 }
 
+void oled_draw_link_icon(int x, int y_row, oled_link_status_t status)
+{
+    // 15x8 pixel icons:
+    // Columns 0..9:   Concentric Wi-Fi waves & base dot
+    // Column 10:      1px spacing
+    // Columns 11..14: Status badge (blank for OK, X for LOST, checkmark for REGAINED)
+    static const uint8_t icon_live[15] = {
+        0x02, 0x11, 0x09, 0x49, 0xC9, 0xC9, 0x49, 0x09, 0x11, 0x02,
+        0x00, 0x00, 0x00, 0x00, 0x00
+    };
+    static const uint8_t icon_lost[15] = {
+        0x82, 0x51, 0x09, 0x69, 0xD1, 0xC9, 0x45, 0x09, 0x12, 0x01,
+        0x00, 0x24, 0x18, 0x18, 0x24
+    };
+    static const uint8_t icon_regained[15] = {
+        0x02, 0x11, 0x09, 0x49, 0xC9, 0xC9, 0x49, 0x09, 0x11, 0x02,
+        0x00, 0x10, 0x20, 0x18, 0x06
+    };
+
+    const uint8_t *bitmap = icon_live;
+    if (status == OLED_LINK_LOST) {
+        bitmap = icon_lost;
+    } else if (status == OLED_LINK_REGAINED) {
+        bitmap = icon_regained;
+    }
+
+    for (int col = 0; col < 15; col++) {
+        uint8_t colbits = bitmap[col];
+        for (int row = 0; row < 8; row++) {
+            set_pixel(x + col, y_row * 8 + row, (colbits >> row) & 1);
+        }
+    }
+}
+
+void oled_draw_link_status(oled_link_status_t status)
+{
+    oled_draw_link_icon(OLED_LINK_ICON_X, OLED_LINK_ICON_ROW, status);
+}
+
 void oled_flush(void)
 {
     write_cmd(0x21); write_cmd(0);   write_cmd(OLED_WIDTH - 1);   // column range

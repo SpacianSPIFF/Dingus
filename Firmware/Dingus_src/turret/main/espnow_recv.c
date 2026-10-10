@@ -15,6 +15,8 @@ static turret_cmd_t latest_cmd;
 static bool has_received_ever = false;
 static int64_t last_recv_us = 0;
 static bool trigger_pending = false;
+static uint8_t controller_mac[6] = {0};
+static bool has_controller_mac = false;
 
 static void recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
 {
@@ -28,6 +30,18 @@ static void recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int le
     int64_t now_us = esp_timer_get_time();
 
     portENTER_CRITICAL(&lock);
+    if (!has_controller_mac && info && info->src_addr) {
+        memcpy(controller_mac, info->src_addr, 6);
+        esp_now_peer_info_t peer = {0};
+        memcpy(peer.peer_addr, controller_mac, 6);
+        peer.channel = 0;
+        peer.encrypt = false;
+        esp_err_t p_err = esp_now_add_peer(&peer);
+        if (p_err == ESP_OK || p_err == ESP_ERR_ESPNOW_EXIST) {
+            has_controller_mac = true;
+        }
+    }
+
     bool duplicate = has_received_ever && (tmp.seq == latest_cmd.seq);
     if (!duplicate) {
         latest_cmd = tmp;
@@ -80,4 +94,17 @@ bool espnow_recv_take_trigger(void)
     trigger_pending = false;
     portEXIT_CRITICAL(&lock);
     return t;
+}
+
+esp_err_t espnow_send_telemetry(const turret_telemetry_t *telem)
+{
+    uint8_t mac[6];
+    bool have_peer;
+    portENTER_CRITICAL(&lock);
+    have_peer = has_controller_mac;
+    if (have_peer) memcpy(mac, controller_mac, 6);
+    portEXIT_CRITICAL(&lock);
+
+    if (!have_peer) return ESP_ERR_INVALID_STATE;
+    return esp_now_send(mac, (const uint8_t *)telem, sizeof(turret_telemetry_t));
 }

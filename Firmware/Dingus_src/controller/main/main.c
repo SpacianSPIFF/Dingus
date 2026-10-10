@@ -13,7 +13,11 @@
 #include "espnow_common.h"
 #include "packet.h"
 
-typedef enum { MODE_ORIENT, MODE_MANUAL } controller_mode_t;
+typedef enum {
+    MODE_ORIENT,   // Both Yaw and Pitch active simultaneously
+    MODE_YAW,      // Only Yaw active (Pitch locked)
+    MODE_PITCH     // Only Pitch active (Yaw locked)
+} controller_mode_t;
 
 static void cal_progress_cb(int percent)
 {
@@ -109,6 +113,8 @@ void app_main(void)
     orientation_init(&orient);
 
     controller_mode_t mode = MODE_ORIENT;
+    float locked_pitch_deg = 0.0f;
+    float locked_yaw_deg = 0.0f;
     mpu6050_data_t imu;
     uint32_t seq = 0;
 
@@ -117,9 +123,19 @@ void app_main(void)
 
         mode_action_t action = poll_mode_button_action();
         if (action == MODE_ACTION_TOGGLE) {
-            mode = (mode == MODE_ORIENT) ? MODE_MANUAL : MODE_ORIENT;
+            // Cycle: ORIENT (both) -> YAW ONLY -> PITCH ONLY -> ORIENT
+            if (mode == MODE_ORIENT) {
+                mode = MODE_YAW;
+                locked_pitch_deg = orient.pitch_deg;
+            } else if (mode == MODE_YAW) {
+                mode = MODE_PITCH;
+                locked_yaw_deg = orient.yaw_deg;
+            } else {
+                mode = MODE_ORIENT;
+            }
         } else if (action == MODE_ACTION_ZERO_YAW) {
             orientation_zero_yaw(&orient);
+            locked_yaw_deg = 0.0f;
             yaw_zeroed_display_until_us = now_us + 1000000;  // Display "YAW ZEROED" for 1 sec
         }
 
@@ -135,14 +151,32 @@ void app_main(void)
         float gz = imu.gyro_z - bias.gyro_z;
         orientation_update(&orient, gx, gy, gz, imu.accel_x, imu.accel_y, imu.accel_z);
 
-        // MODE_ORIENT: uses Gyro Z integration (aim by rotating remote left/right)
-        // MODE_MANUAL: uses Roll tilt (aim by tilting remote left/right, 100% drift-free)
-        float commanded_yaw = (mode == MODE_ORIENT) ? orient.yaw_deg : orient.roll_deg;
+        // Determine commanded angles based on active mode
+        float commanded_yaw = orient.yaw_deg;
+        float commanded_pitch = orient.pitch_deg;
+        switch (mode) {
+        case MODE_ORIENT:
+            commanded_yaw = orient.yaw_deg;
+            commanded_pitch = orient.pitch_deg;
+            break;
+        case MODE_YAW:
+            commanded_yaw = orient.yaw_deg;
+            commanded_pitch = locked_pitch_deg;
+            break;
+        case MODE_PITCH:
+            commanded_yaw = locked_yaw_deg;
+            commanded_pitch = orient.pitch_deg;
+            break;
+        default:
+            commanded_yaw = orient.yaw_deg;
+            commanded_pitch = orient.pitch_deg;
+            break;
+        }
 
         turret_cmd_t cmd = {
             .seq = seq++,
             .yaw_deg = commanded_yaw,
-            .pitch_deg = orient.pitch_deg,
+            .pitch_deg = commanded_pitch,
             .trigger = fired ? 1 : 0,
         };
         espnow_send_cmd(&cmd);
@@ -154,31 +188,87 @@ void app_main(void)
         }
         link_was_ok = link_ok;
 
+        // Query live telemetry received from the turret
+        turret_telemetry_t telem = {0};
+        bool have_telem = espnow_get_telemetry(&telem);
+
         oled_clear();
         // Row 0: Mode description
-        oled_draw_text(0, 0, mode == MODE_ORIENT ? "MODE: YAW (TURN)" : "MODE: TILT(ROLL)");
+        switch (mode) {
+        case MODE_ORIENT:
+            oled_draw_text(0, 0, "MODE: ORIENT (Y+P)");
+            break;
+        case MODE_YAW:
+            oled_draw_text(0, 0, "MODE: YAW ONLY");
+            break;
+        case MODE_PITCH:
+            oled_draw_text(0, 0, "MODE: PITCH ONLY");
+            break;
+        default:
+            oled_draw_text(0, 0, "MODE: ORIENT (Y+P)");
+            break;
+        }
 
-        // Row 1: Orientation angles
+        // Row 1: Target/Commanded angles from remote
         char line[24];
-        snprintf(line, sizeof(line), "R%3d P%3d Y%3d",
-                 (int)orient.roll_deg, (int)orient.pitch_deg, (int)commanded_yaw);
+        snprintf(line, sizeof(line), "CMD: P%3d  Y%3d",
+                 (int)commanded_pitch, (int)commanded_yaw);
         oled_draw_text(0, 1, line);
 
-        // Row 2: Fire flash or Yaw Zero notification
-        if (show_fire_text) {
-            oled_draw_text(0, 2, "*** FIRE ***");
-        } else if (now_us < yaw_zeroed_display_until_us) {
-            oled_draw_text(0, 2, "YAW ZEROED!");
+        // Row 2: Live actual turret angles from telemetry (always visible)
+        if (have_telem) {
+            snprintf(line, sizeof(line), "TUR: P%3d  Y%3d",
+                     (int)telem.pitch_deg, (int)telem.yaw_deg);
+            oled_draw_text(0, 2, line);
+        } else {
+            oled_draw_text(0, 2, "TUR: NO DATA");
         }
 
-        // Row 3: Link connection status
-        if (!link_ok) {
-            oled_draw_text(0, 3, "LINK: LOST!");
-        } else if (now_us < reconnected_display_until_us) {
-            oled_draw_text(0, 3, "LINK: REGAINED");
-        } else {
-            oled_draw_text(0, 3, "LINK: OK");
+        // Row 3: Launcher state & action notifications on the left
+        if (now_us < yaw_zeroed_display_until_us) {
+            oled_draw_text(0, 3, "YAW ZEROED!");
+        } else if (!link_ok) {
+            oled_draw_text(0, 3, "LINK LOST");
+        } else if (have_telem) {
+            switch (telem.launcher_state) {
+            case LAUNCHER_STATE_FIRING:
+                oled_draw_text(0, 3, "*** FIRING! ***");
+                break;
+            case LAUNCHER_STATE_SPOOLING: {
+                int dot_count = (int)((now_us / 250000) % 4);
+                char sbuf[16];
+                if (dot_count == 0)      snprintf(sbuf, sizeof(sbuf), "SPOOLING    ");
+                else if (dot_count == 1) snprintf(sbuf, sizeof(sbuf), "SPOOLING .  ");
+                else if (dot_count == 2) snprintf(sbuf, sizeof(sbuf), "SPOOLING .. ");
+                else                     snprintf(sbuf, sizeof(sbuf), "SPOOLING ...");
+                oled_draw_text(0, 3, sbuf);
+                break;
+            }
+            case LAUNCHER_STATE_READY: {
+                char lbuf[20];
+                snprintf(lbuf, sizeof(lbuf), "HOT: READY (%ds)", telem.ready_sec);
+                oled_draw_text(0, 3, lbuf);
+                break;
+            }
+            case LAUNCHER_STATE_IDLE:
+            default:
+                if (show_fire_text) {
+                    oled_draw_text(0, 3, "TRIGGER SENT");
+                }
+                break;
+            }
+        } else if (show_fire_text) {
+            oled_draw_text(0, 3, "TRIGGER SENT");
         }
+
+        // Bottom right: Wireless link status icon (Live Wi-Fi, Slashed Wi-Fi, or Regained checkmark)
+        oled_link_status_t link_status = OLED_LINK_OK;
+        if (!link_ok) {
+            link_status = OLED_LINK_LOST;
+        } else if (now_us < reconnected_display_until_us) {
+            link_status = OLED_LINK_REGAINED;
+        }
+        oled_draw_link_status(link_status);
 
         oled_flush();
 

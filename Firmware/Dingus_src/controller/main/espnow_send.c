@@ -14,6 +14,10 @@ static portMUX_TYPE send_lock = portMUX_INITIALIZER_UNLOCKED;
 static int64_t last_ack_time_us = 0;
 static bool ever_received_ack = false;
 
+static turret_telemetry_t latest_telem;
+static bool has_telem_ever = false;
+static int64_t last_telem_us = 0;
+
 static void send_cb(const wifi_tx_info_t *tx_info, esp_now_send_status_t status)
 {
     if (status == ESP_NOW_SEND_SUCCESS) {
@@ -26,6 +30,23 @@ static void send_cb(const wifi_tx_info_t *tx_info, esp_now_send_status_t status)
     }
 }
 
+static void recv_cb(const esp_now_recv_info_t *info, const uint8_t *data, int len)
+{
+    if (len != sizeof(turret_telemetry_t)) return;
+
+    turret_telemetry_t tmp;
+    memcpy(&tmp, data, sizeof(tmp));
+    int64_t now_us = esp_timer_get_time();
+
+    portENTER_CRITICAL(&send_lock);
+    latest_telem = tmp;
+    has_telem_ever = true;
+    last_telem_us = now_us;
+    last_ack_time_us = now_us; // telemetry packet directly confirms link is alive
+    ever_received_ack = true;
+    portEXIT_CRITICAL(&send_lock);
+}
+
 bool espnow_send_is_connected(void)
 {
     portENTER_CRITICAL(&send_lock);
@@ -34,8 +55,20 @@ bool espnow_send_is_connected(void)
     portEXIT_CRITICAL(&send_lock);
 
     if (!acked) return false;
-    // Considered alive if an ACK arrived within the last 600 ms (controller transmits at ~50 Hz / 20 ms)
+    // Considered alive if an ACK or telemetry arrived within the last 600 ms
     return (esp_timer_get_time() - last) < 600000;
+}
+
+bool espnow_get_telemetry(turret_telemetry_t *out)
+{
+    portENTER_CRITICAL(&send_lock);
+    bool have = has_telem_ever;
+    int64_t last = last_telem_us;
+    if (have) memcpy(out, &latest_telem, sizeof(turret_telemetry_t));
+    portEXIT_CRITICAL(&send_lock);
+
+    if (!have) return false;
+    return (esp_timer_get_time() - last) < 1000000;
 }
 
 esp_err_t espnow_send_init(void)
@@ -52,7 +85,8 @@ esp_err_t espnow_send_init(void)
     }
 
     esp_now_register_send_cb(send_cb);
-    ESP_LOGI(TAG, "ESP-NOW sender ready, target %02X:%02X:%02X:%02X:%02X:%02X",
+    esp_now_register_recv_cb(recv_cb);
+    ESP_LOGI(TAG, "ESP-NOW sender & telemetry receiver ready, target %02X:%02X:%02X:%02X:%02X:%02X",
               turret_mac[0], turret_mac[1], turret_mac[2],
               turret_mac[3], turret_mac[4], turret_mac[5]);
     return ESP_OK;

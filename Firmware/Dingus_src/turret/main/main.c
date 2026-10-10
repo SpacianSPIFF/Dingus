@@ -56,7 +56,7 @@ void app_main(void)
     bool link_was_ok = false;
 
     while (1) {
-        turret_cmd_t cmd;
+        turret_cmd_t cmd = {0};
         bool have_cmd = espnow_recv_get_latest(&cmd);
         bool link_ok = espnow_recv_link_alive();
         bool fire = espnow_recv_take_trigger();   // always consumed, so stale triggers can't pile up
@@ -89,6 +89,23 @@ void app_main(void)
         // Link dead: servos simply aren't updated, so they hold their last position.
 
         launcher_update();
+
+        // Query launcher state & countdown
+        uint8_t ready_sec = 0;
+        launcher_state_t l_state = launcher_get_state(&ready_sec);
+
+        // Send achieved workspace angles and launcher state back to handheld controller
+        float live_yaw = current_yaw_servo_deg - yaw_center;
+        float live_pitch = current_pitch_servo_deg - PITCH_ZERO_OFFSET_DEG;
+        turret_telemetry_t telem = {
+            .seq = cmd.seq,
+            .yaw_deg = live_yaw,
+            .pitch_deg = live_pitch,
+            .launcher_state = (uint8_t)l_state,
+            .ready_sec = ready_sec,
+            .flags = (link_ok ? 1 : 0),
+        };
+        espnow_send_telemetry(&telem);
 
         vTaskDelay(pdMS_TO_TICKS(LOOP_PERIOD_MS));
     }

@@ -1,5 +1,7 @@
 #pragma once
+#include <stdint.h>
 #include "esp_err.h"
+#include "packet.h"
 
 // Sets up both ESCs and the pusher, then blocks for ESC_ARM_MS while the ESCs arm.
 // servo_timer_init() must have been called first.
@@ -14,3 +16,6 @@ void launcher_update(void);
 
 // Link lost / emergency: cancel any queued shot, cut flywheels, retract the pusher.
 void launcher_safe_stop(void);
+
+// Queries the live launcher state and countdown seconds remaining before flywheels spin down.
+launcher_state_t launcher_get_state(uint8_t *out_countdown_sec);
